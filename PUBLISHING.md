@@ -130,14 +130,16 @@ Keep the same extension ID (`alckordev.quick-scripts-runner`) on both marketplac
 
 ### Automated release
 
-Preferred path: tag the version and let GitHub Actions publish to both destinations (see [.github/DEPLOYMENT.md](.github/DEPLOYMENT.md)):
+Preferred path: tag the version and let GitHub Actions build the VSIX. Publishing waits for your approval in the **Prod** environment (see [.github/DEPLOYMENT.md](.github/DEPLOYMENT.md)):
 
 ```bash
 git tag v1.1.0
 git push origin v1.1.0
 ```
 
-Required repository secrets: `VS_MARKETPLACE_TOKEN`, `OPEN_VSX_TOKEN`.
+Then open **Actions** → **Publish Extension** → **Review deployments** → **Approve**.
+
+Required **Prod** environment secrets: `VS_MARKETPLACE_TOKEN`, `OPEN_VSX_TOKEN`. Enable **Required reviewers** on that environment so the publish job cannot start without your approval.
 
 ## ⚠️ Important Notes
 
