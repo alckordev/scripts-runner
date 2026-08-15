@@ -1,14 +1,10 @@
 import * as vscode from 'vscode';
-import { ScriptTreeItem } from './script-tree-item';
 
 /**
  * TreeItem to represent a workspace folder
  */
 export class WorkspaceTreeItem extends vscode.TreeItem {
-  constructor(
-    public readonly workspaceFolder: vscode.WorkspaceFolder,
-    public readonly children: ScriptTreeItem[]
-  ) {
+  constructor(public readonly workspaceFolder: vscode.WorkspaceFolder) {
     super(workspaceFolder.name, vscode.TreeItemCollapsibleState.Expanded);
     this.contextValue = 'workspace';
     this.iconPath = new vscode.ThemeIcon('folder');

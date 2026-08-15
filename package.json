@@ -1,8 +1,8 @@
 {
   "name": "quick-scripts-runner",
   "displayName": "Quick Scripts Runner",
-  "description": "Execute package.json scripts with automatic package manager detection",
-  "version": "1.0.1",
+  "description": "Execute package.json scripts with automatic package manager detection, including nested packages and monorepos",
+  "version": "1.1.0",
   "publisher": "alckordev",
   "icon": "images/icon.png",
   "author": {
@@ -24,7 +24,9 @@
     "package.json",
     "package-manager",
     "task-runner",
-    "automation"
+    "automation",
+    "monorepo",
+    "workspaces"
   ],
   "categories": [
     "Other"
@@ -60,6 +62,32 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically detect package manager"
+        },
+        "quickScriptsRunner.scanSubfolders": {
+          "type": "boolean",
+          "default": true,
+          "description": "Scan subfolders for package.json files and list their scripts"
+        },
+        "quickScriptsRunner.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/dist/**",
+            "**/out/**",
+            "**/.next/**",
+            "**/coverage/**"
+          ],
+          "description": "Glob patterns to exclude when scanning subfolders for package.json files"
+        },
+        "quickScriptsRunner.maxResults": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "description": "Maximum number of package.json files to include when scanning subfolders"
         }
       }
     },
@@ -75,21 +103,25 @@
       {
         "command": "quickScriptsRunner.runScript",
         "title": "Run Script",
+        "category": "Quick Scripts Runner",
         "icon": "$(run)"
       },
       {
         "command": "quickScriptsRunner.refresh",
         "title": "Refresh Scripts",
+        "category": "Quick Scripts Runner",
         "icon": "$(refresh)"
       },
       {
         "command": "quickScriptsRunner.openPackageJson",
         "title": "Open package.json",
+        "category": "Quick Scripts Runner",
         "icon": "$(file-code)"
       },
       {
         "command": "quickScriptsRunner.changePackageManager",
         "title": "Change Package Manager",
+        "category": "Quick Scripts Runner",
         "icon": "$(package)"
       }
     ],
@@ -116,6 +148,16 @@
           "command": "quickScriptsRunner.runScript",
           "when": "view == quickScriptsRunnerExplorer && viewItem == script",
           "group": "inline"
+        },
+        {
+          "command": "quickScriptsRunner.openPackageJson",
+          "when": "view == quickScriptsRunnerExplorer && viewItem == package",
+          "group": "inline"
+        },
+        {
+          "command": "quickScriptsRunner.openPackageJson",
+          "when": "view == quickScriptsRunnerExplorer && viewItem == script",
+          "group": "1_modification"
         }
       ]
     }

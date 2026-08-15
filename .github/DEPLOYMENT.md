@@ -1,6 +1,6 @@
 # Automated Deployment Guide
 
-This project uses GitHub Actions to automatically publish the extension to both VS Marketplace and Open VSX Registry when a new tag is created.
+This project uses GitHub Actions to automatically publish the extension to both VS Marketplace (VS Code) and Open VSX Registry (Cursor) when a new tag is created.
 
 ## Prerequisites
 
@@ -81,10 +81,12 @@ The `publish.yml` workflow:
 
 The workflow extracts the version from `package.json`. Make sure to:
 
-1. Update `version` in `package.json` (e.g., `1.0.1`)
+1. Update `version` in `package.json` (e.g., `1.1.0`)
 2. Update `CHANGELOG.md` with the new version
 3. Commit and push changes
-4. Create and push a tag: `git tag v1.0.1 && git push origin v1.0.1`
+4. Create and push a tag: `git tag v1.1.0 && git push origin v1.1.0`
+
+Cursor lists Open VSX extensions after a short indexing delay. If the new version does not appear in Cursor search immediately, reload the window and search for `alckordev.quick-scripts-runner`.
 
 ## Troubleshooting
 

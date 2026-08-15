@@ -18,7 +18,7 @@
 - [x] `name` - Unique identifier
 - [x] `displayName` - Human-readable name
 - [x] `description` - Clear description
-- [x] `version` - Semantic version (1.0.0)
+- [x] `version` - Semantic version (1.1.0)
 - [x] `publisher` - Publisher ID (alckordev)
 - [x] `engines.vscode` - Minimum VS Code version
 - [x] `icon` - Path to icon file
@@ -44,6 +44,8 @@
 - [x] Script execution works
 - [x] Package manager detection works
 - [x] Multi-workspace support works
+- [x] Nested `package.json` packages appear in the sidebar
+- [x] Scripts from nested packages run with the correct `cwd`
 - [x] File watcher updates correctly
 
 ## 📦 Publishing Steps
@@ -81,26 +83,61 @@ vsce login alckordev
 vsce package
 ```
 
-This creates `quick-scripts-runner-1.0.0.vsix`
+This creates `quick-scripts-runner-1.1.0.vsix`
 
 ### 6. Test Package Locally (Optional)
 
 ```bash
-code --install-extension quick-scripts-runner-1.0.0.vsix
+code --install-extension quick-scripts-runner-1.1.0.vsix
+cursor --install-extension quick-scripts-runner-1.1.0.vsix
 ```
 
-### 7. Publish to Marketplace
+### 7. Publish to VS Code Marketplace
 
 ```bash
-vsce publish
+vsce publish --no-yarn
 ```
 
 Or publish with version increment:
 
 ```bash
-vsce publish minor  # 1.0.0 -> 1.1.0
-vsce publish patch  # 1.0.0 -> 1.0.1
+vsce publish minor  # 1.1.0 -> 1.2.0
+vsce publish patch  # 1.1.0 -> 1.1.1
 ```
+
+### 8. Publish to Cursor (Open VSX)
+
+Cursor does **not** use the VS Code Marketplace. It indexes third-party extensions from [Open VSX](https://open-vsx.org/) through its own marketplace proxy.
+
+1. Sign in at https://open-vsx.org with GitHub
+2. Create an access token from your Open VSX profile
+3. Create the publisher namespace if it does not exist:
+
+```bash
+npx ovsx create-namespace alckordev -p <OPEN_VSX_TOKEN>
+```
+
+4. Publish the same VSIX:
+
+```bash
+npx ovsx publish quick-scripts-runner-1.1.0.vsix -p <OPEN_VSX_TOKEN>
+```
+
+5. Confirm the listing at https://open-vsx.org/extension/alckordev/quick-scripts-runner
+6. In Cursor, search for `alckordev.quick-scripts-runner`. Indexing can take a few minutes; use **Developer: Reload Window** if it does not appear immediately.
+
+Keep the same extension ID (`alckordev.quick-scripts-runner`) on both marketplaces.
+
+### Automated release
+
+Preferred path: tag the version and let GitHub Actions publish to both destinations (see [.github/DEPLOYMENT.md](.github/DEPLOYMENT.md)):
+
+```bash
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+Required repository secrets: `VS_MARKETPLACE_TOKEN`, `OPEN_VSX_TOKEN`.
 
 ## ⚠️ Important Notes
 

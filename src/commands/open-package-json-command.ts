@@ -2,7 +2,14 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ICommand } from '../models/command';
+import { IPackageScanner } from '../services/package-scanner';
+import { PackageTreeItem } from '../core/package-tree-item';
+import { ScriptTreeItem } from '../core/script-tree-item';
 import { Logger } from '../utils/logger';
+
+interface PackageQuickPickItem extends vscode.QuickPickItem {
+  packageDir: string;
+}
 
 /**
  * Command to open or create package.json
@@ -10,96 +17,123 @@ import { Logger } from '../utils/logger';
 export class OpenPackageJsonCommand implements ICommand {
   readonly id = 'quickScriptsRunner.openPackageJson';
 
-  /**
-   * Executes the command
-   */
-  async execute(): Promise<void> {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
+  constructor(private readonly packageScanner: IPackageScanner) {}
 
-    if (!workspaceFolders || workspaceFolders.length === 0) {
+  /**
+   * Opens package.json for a tree item, or lets the user pick a package
+   */
+  async execute(item?: unknown): Promise<void> {
+    const packageDirFromItem = this.resolvePackageDirFromItem(item);
+    if (packageDirFromItem) {
+      await this.openOrCreate(packageDirFromItem);
+      return;
+    }
+
+    const packages = await this.collectPackages();
+
+    if (packages.length === 1) {
+      await this.openOrCreate(packages[0].packageDir);
+      return;
+    }
+
+    if (packages.length > 1) {
+      const selected = await vscode.window.showQuickPick(packages, {
+        placeHolder: 'Select a package.json to open',
+        matchOnDescription: true,
+      });
+
+      if (!selected) {
+        return;
+      }
+
+      await this.openOrCreate(selected.packageDir);
+      return;
+    }
+
+    const fallbackWorkspace = vscode.workspace.workspaceFolders?.[0];
+    if (!fallbackWorkspace) {
       vscode.window.showErrorMessage('No workspace open');
       return;
     }
 
-    // Try to detect active workspace based on active editor
-    let activeWorkspace: vscode.WorkspaceFolder | undefined;
+    await this.openOrCreate(fallbackWorkspace.uri.fsPath);
+  }
 
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor?.document.uri) {
-      activeWorkspace = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri);
+  /**
+   * Resolves a package directory from a tree item argument
+   */
+  private resolvePackageDirFromItem(item: unknown): string | undefined {
+    if (item instanceof PackageTreeItem) {
+      return item.packageInfo.dir;
     }
 
-    // If no active workspace detected, check if there are multiple workspaces with package.json
-    if (!activeWorkspace && workspaceFolders.length > 1) {
-      // Get all workspaces that have package.json
-      const workspacesWithPackageJson = workspaceFolders.filter((folder) =>
-        fs.existsSync(path.join(folder.uri.fsPath, 'package.json'))
-      );
+    if (item instanceof ScriptTreeItem) {
+      return item.script.packageDir;
+    }
 
-      if (workspacesWithPackageJson.length > 1) {
-        // Show QuickPick to let user choose which workspace
-        const selected = await vscode.window.showQuickPick(
-          workspacesWithPackageJson.map((folder) => ({
-            label: folder.name,
-            description: folder.uri.fsPath,
-            folder,
-          })),
-          {
-            placeHolder: 'Select workspace to open package.json',
-          }
-        );
+    return undefined;
+  }
 
-        if (!selected) {
-          return; // User cancelled
-        }
+  /**
+   * Collects discovered packages across all workspace folders
+   */
+  private async collectPackages(): Promise<PackageQuickPickItem[]> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const items: PackageQuickPickItem[] = [];
 
-        activeWorkspace = selected.folder;
-      } else if (workspacesWithPackageJson.length === 1) {
-        activeWorkspace = workspacesWithPackageJson[0];
-      } else {
-        // No workspaces have package.json, use first one for creation
-        activeWorkspace = workspaceFolders[0];
+    for (const folder of folders) {
+      const packages = await this.packageScanner.findPackages(folder);
+
+      for (const pkg of packages) {
+        items.push({
+          label: pkg.relativePath === '.' ? folder.name : path.basename(pkg.dir),
+          description: pkg.relativePath,
+          packageDir: pkg.dir,
+        });
       }
     }
 
-    // Fallback to first workspace if still no active workspace
-    if (!activeWorkspace) {
-      activeWorkspace = workspaceFolders[0];
-    }
+    return items;
+  }
 
-    const packageJsonPath = path.join(activeWorkspace.uri.fsPath, 'package.json');
+  /**
+   * Opens package.json in the given directory, offering to create it when missing
+   */
+  private async openOrCreate(packageDir: string): Promise<void> {
+    const packageJsonPath = path.join(packageDir, 'package.json');
 
     if (fs.existsSync(packageJsonPath)) {
       const document = await vscode.workspace.openTextDocument(packageJsonPath);
       await vscode.window.showTextDocument(document);
-      Logger.info(`package.json opened from workspace: ${activeWorkspace.name}`);
-    } else {
-      const result = await vscode.window.showInformationMessage(
-        `package.json not found in ${activeWorkspace.name}. Do you want to create one?`,
-        'Create'
-      );
+      Logger.info(`package.json opened from: ${packageDir}`);
+      return;
+    }
 
-      if (result === 'Create') {
-        await this.createPackageJson(activeWorkspace.uri.fsPath);
-      }
+    const result = await vscode.window.showInformationMessage(
+      `package.json not found in ${packageDir}. Do you want to create one?`,
+      'Create'
+    );
+
+    if (result === 'Create') {
+      await this.createPackageJson(packageDir);
     }
   }
 
   /**
    * Creates a basic package.json
    */
-  private async createPackageJson(workspacePath: string): Promise<void> {
+  private async createPackageJson(packageDir: string): Promise<void> {
     try {
-      const workspaceName = path.basename(workspacePath);
+      const packageName = path.basename(packageDir);
       const packageJson = {
-        name: workspaceName.toLowerCase().replace(/\s+/g, '-'),
+        name: packageName.toLowerCase().replace(/\s+/g, '-'),
         version: '1.0.0',
         scripts: {
           start: "echo 'Add your commands here'",
         },
       };
 
-      const packageJsonPath = path.join(workspacePath, 'package.json');
+      const packageJsonPath = path.join(packageDir, 'package.json');
       await fs.promises.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
 
       const document = await vscode.workspace.openTextDocument(packageJsonPath);

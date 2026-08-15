@@ -19,7 +19,7 @@ export interface IScriptExecutor {
  */
 export class ScriptExecutor implements IScriptExecutor {
   /**
-   * Executes a script in the integrated terminal
+   * Executes a script in the integrated terminal using the package directory as cwd
    */
   execute(
     script: Script,
@@ -27,7 +27,12 @@ export class ScriptExecutor implements IScriptExecutor {
     workspaceFolder: vscode.WorkspaceFolder
   ): void {
     try {
-      const terminalName = `${workspaceFolder.name}: ${packageManager} ${script.name}`;
+      const cwd = script.packageDir || workspaceFolder.uri.fsPath;
+      const packageLabel =
+        script.relativePath && script.relativePath !== '.'
+          ? script.relativePath
+          : workspaceFolder.name;
+      const terminalName = `${packageLabel}: ${packageManager} ${script.name}`;
       const command = `${packageManager} run ${script.name}`;
 
       let terminal = vscode.window.terminals.find((t) => t.name === terminalName);
@@ -35,7 +40,7 @@ export class ScriptExecutor implements IScriptExecutor {
       if (!terminal) {
         const terminalOptions: vscode.TerminalOptions = {
           name: terminalName,
-          cwd: workspaceFolder.uri.fsPath,
+          cwd,
         };
         terminal = vscode.window.createTerminal(terminalOptions);
       }
@@ -43,7 +48,7 @@ export class ScriptExecutor implements IScriptExecutor {
       terminal.show();
       terminal.sendText(command);
 
-      Logger.info(`Executing: ${command} in workspace: ${workspaceFolder.name}`);
+      Logger.info(`Executing: ${command} in ${cwd}`);
     } catch (error) {
       Logger.error('Error executing script', error as Error);
       vscode.window.showErrorMessage(`Error executing script: ${script.name}`);

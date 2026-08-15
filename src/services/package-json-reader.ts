@@ -7,8 +7,8 @@ import { Logger } from '../utils/logger';
  * Interface for package.json reader
  */
 export interface IPackageJsonReader {
-  readScripts(workspacePath: string): Promise<Script[]>;
-  exists(workspacePath: string): boolean;
+  readScripts(packageDir: string, relativePath?: string): Promise<Script[]>;
+  exists(packageDir: string): boolean;
 }
 
 /**
@@ -16,22 +16,22 @@ export interface IPackageJsonReader {
  */
 export class PackageJsonReader implements IPackageJsonReader {
   /**
-   * Checks if package.json exists in the workspace
+   * Checks if package.json exists in the given directory
    */
-  exists(workspacePath: string): boolean {
-    const packageJsonPath = path.join(workspacePath, 'package.json');
+  exists(packageDir: string): boolean {
+    const packageJsonPath = path.join(packageDir, 'package.json');
     return fs.existsSync(packageJsonPath);
   }
 
   /**
    * Reads and parses scripts from package.json
    */
-  async readScripts(workspacePath: string): Promise<Script[]> {
+  async readScripts(packageDir: string, relativePath = '.'): Promise<Script[]> {
     try {
-      const packageJsonPath = path.join(workspacePath, 'package.json');
+      const packageJsonPath = path.join(packageDir, 'package.json');
 
-      if (!this.exists(workspacePath)) {
-        Logger.debug(`package.json not found in: ${workspacePath}`);
+      if (!this.exists(packageDir)) {
+        Logger.debug(`package.json not found in: ${packageDir}`);
         return [];
       }
 
@@ -39,7 +39,7 @@ export class PackageJsonReader implements IPackageJsonReader {
       const packageJson = JSON.parse(content);
 
       if (!packageJson.scripts || typeof packageJson.scripts !== 'object') {
-        Logger.debug('No scripts found in package.json');
+        Logger.debug(`No scripts found in package.json at ${packageDir}`);
         return [];
       }
 
@@ -48,9 +48,11 @@ export class PackageJsonReader implements IPackageJsonReader {
         .map(([name, command]) => ({
           name,
           command: command as string,
+          packageDir,
+          relativePath,
         }));
 
-      Logger.info(`Found ${scripts.length} scripts`);
+      Logger.info(`Found ${scripts.length} scripts in ${relativePath}`);
       return scripts;
     } catch (error) {
       Logger.error('Error reading package.json', error as Error);

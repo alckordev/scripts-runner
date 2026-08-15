@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Logger } from './utils/logger';
 import { ConfigurationService } from './services/configuration-service';
 import { PackageJsonReader } from './services/package-json-reader';
+import { PackageScanner } from './services/package-scanner';
 import { StatusBarService } from './services/status-bar-service';
 import { PackageManagerDetector } from './core/package-manager-detector';
 import { ScriptExecutor } from './core/script-executor';
@@ -23,12 +24,13 @@ export function activate(context: vscode.ExtensionContext): void {
   // 1. Create base services
   const configService = new ConfigurationService();
   const packageJsonReader = new PackageJsonReader();
+  const packageScanner = new PackageScanner(packageJsonReader, configService);
   const statusBarService = new StatusBarService();
 
   // 2. Create core components with dependency injection
   const packageManagerDetector = new PackageManagerDetector(configService);
   const scriptExecutor = new ScriptExecutor();
-  const scriptsProvider = new ScriptsProvider(packageJsonReader, packageManagerDetector);
+  const scriptsProvider = new ScriptsProvider(packageScanner, packageManagerDetector);
 
   // 3. Create TreeView
   const treeView = vscode.window.createTreeView('quickScriptsRunnerExplorer', {
@@ -60,10 +62,18 @@ export function activate(context: vscode.ExtensionContext): void {
 
   updateStatusBar();
 
-  // Listen for active editor changes to update status bar
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(() => {
       updateStatusBar();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('quickScriptsRunner')) {
+        scriptsProvider.refresh();
+        updateStatusBar();
+      }
     })
   );
 
@@ -76,9 +86,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const commandRegistry = new CommandRegistry();
 
   const commands = [
-    new RunScriptCommand(scriptExecutor, packageManagerDetector),
+    new RunScriptCommand(scriptExecutor, packageManagerDetector, packageScanner),
     new RefreshCommand(scriptsProvider),
-    new OpenPackageJsonCommand(),
+    new OpenPackageJsonCommand(packageScanner),
     new ChangePackageManagerCommand(configService, scriptsProvider, statusBarService),
   ];
 

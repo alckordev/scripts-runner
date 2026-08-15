@@ -1,6 +1,6 @@
 # Quick Scripts Runner
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.70%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -17,8 +17,9 @@ The ultimate Visual Studio Code extension for running npm, pnpm, yarn, and bun s
 ### 🎯 Core Functionality
 
 - **📋 Scripts Sidebar View**: A dedicated "Quick Scripts Runner" panel in the Explorer view that displays all available scripts from your `package.json`
+- **📂 Nested Packages**: Discovers `package.json` files in subfolders (monorepos, microfrontends) and lists each package's scripts
 - **🚀 One-Click Execution**: Execute any script with a single click—no terminal commands needed
-- **🔍 Automatic Package Manager Detection**: Intelligently detects your package manager (npm, pnpm, yarn, bun) based on lock files
+- **🔍 Automatic Package Manager Detection**: Intelligently detects your package manager (npm, pnpm, yarn, bun) based on lock files, walking up from nested packages when needed
 - **🔄 Auto-Refresh**: Automatically updates the scripts list when `package.json` or lock files change
 - **📊 Status Bar Indicator**: Visual indicator in the status bar showing the current package manager
 - **📁 Multi-Workspace Support**: Works seamlessly with multiple workspace folders, showing scripts hierarchically
@@ -35,7 +36,7 @@ The ultimate Visual Studio Code extension for running npm, pnpm, yarn, and bun s
 
 ![Quick Scripts Runner](images/screenshot.png)
 
-The extension adds a new "Quick Scripts Runner" section in the explorer sidebar, displaying all available scripts from your `package.json`. Scripts are automatically grouped by workspace folder when working with multiple projects.
+The extension adds a new "Quick Scripts Runner" section in the explorer sidebar, displaying all available scripts from your `package.json`. Nested packages are grouped as package nodes; a workspace with a single root `package.json` still shows scripts directly.
 
 ## 🚀 Installation
 
@@ -51,6 +52,17 @@ Or install via command line:
 ```bash
 code --install-extension alckordev.quick-scripts-runner
 ```
+
+### From Cursor
+
+Cursor indexes extensions from [Open VSX](https://open-vsx.org/), not the VS Code Marketplace.
+
+1. Open Cursor
+2. Press `Ctrl+Shift+X` (or `Cmd+Shift+X` on Mac) to open Extensions
+3. Search for **"Quick Scripts Runner"** (`alckordev.quick-scripts-runner`)
+4. Click **Install**
+
+If the listing does not appear immediately after a new release, reload the window (`Developer: Reload Window`) and search again after Open VSX has been indexed.
 
 ### From Source
 
@@ -74,12 +86,15 @@ code --install-extension alckordev.quick-scripts-runner
 
 1. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
 2. Type "Quick Scripts Runner: Run Script"
-3. Select the script from the list
+3. Select the script from the list (nested packages appear with their relative path as detail)
+
+Each script runs in an integrated terminal whose working directory is the folder that contains that `package.json`. Terminals are reused per package + script, so `dev` in the workspace root and `dev` in a subpackage do not share a terminal.
 
 #### Method 3: Right-Click Context Menu
 
 - Right-click on any script in the Quick Scripts Runner view
 - Select "Run Script" from the context menu
+- Right-click a package or script and choose **Open package.json** to edit that package's file
 
 ### Refreshing Scripts
 
@@ -134,19 +149,36 @@ If `package.json` doesn't exist:
 2. When prompted, click "Create"
 3. A basic `package.json` template will be created with a sample script
 
-## 📁 Multi-Workspace Support
+## 📁 Nested Packages and Multi-Workspace Support
 
-When working with multiple workspace folders, Quick Scripts Runner provides intelligent organization:
+When working with nested `package.json` files or multiple workspace folders, Quick Scripts Runner organizes scripts as follows:
 
-### Single Workspace
+### Single Package (workspace root only)
 
 - Scripts are displayed directly in the Quick Scripts Runner view
 - No folder hierarchy needed
 
+### Nested Packages (monorepos, microfrontends)
+
+Example:
+
+```
+mytheondev/
+  package.json          → root scripts (dev, build, …)
+  microfrontend/
+    mf-hr/package.json
+    mf-logistics/package.json
+    mf-sales/package.json
+```
+
+The view shows a package node for the root and one for each nested package (for example `mf-sales` with description `microfrontend/mf-sales`). Intermediate folders without a `package.json` are not listed. Each script runs with `cwd` set to its own package directory.
+
+Disable this with `quickScriptsRunner.scanSubfolders` if you only want the workspace root.
+
 ### Multiple Workspaces
 
-- Each workspace with a `package.json` appears as a folder in the view
-- Expand folders to see scripts for each workspace
+- Each workspace with scripts appears as a folder in the view
+- Expand folders to see packages (or scripts, when the workspace has a single root package)
 - The active workspace is automatically detected based on your current editor
 - Status bar shows the package manager for the active workspace
 
@@ -194,13 +226,64 @@ Enables or disables automatic package manager detection based on lock files.
 }
 ```
 
+### `quickScriptsRunner.scanSubfolders`
+
+Enables recursive discovery of `package.json` files in subfolders.
+
+| Setting | Type    | Default | Description                                        |
+| ------- | ------- | ------- | -------------------------------------------------- |
+| Values  | boolean | `true`  | When `true`, nested packages appear in the sidebar |
+| Scope   |         |         | Workspace or User settings                         |
+
+**Example**:
+
+```json
+{
+  "quickScriptsRunner.scanSubfolders": true
+}
+```
+
+### `quickScriptsRunner.exclude`
+
+Glob patterns skipped while scanning nested `package.json` files.
+
+| Setting | Type           | Default                                                                                            | Description       |
+| ------- | -------------- | -------------------------------------------------------------------------------------------------- | ----------------- |
+| Values  | array of globs | `["**/node_modules/**", "**/.git/**", "**/dist/**", "**/out/**", "**/.next/**", "**/coverage/**"]` | Paths to ignore   |
+| Scope   |                |                                                                                                    | Workspace or User |
+
+**Example**:
+
+```json
+{
+  "quickScriptsRunner.exclude": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/vendor/**"]
+}
+```
+
+### `quickScriptsRunner.maxResults`
+
+Maximum number of `package.json` files to include when scanning subfolders. Prevents very large workspaces from stalling the tree view.
+
+| Setting | Type   | Default | Description                |
+| ------- | ------ | ------- | -------------------------- |
+| Values  | number | `50`    | Must be at least `1`       |
+| Scope   |        |         | Workspace or User settings |
+
+**Example**:
+
+```json
+{
+  "quickScriptsRunner.maxResults": 80
+}
+```
+
 ### Detection Priority
 
-When auto-detection is enabled, the extension checks for lock files in this order:
+When auto-detection is enabled, the extension checks for lock files in the package directory, then walks up to the workspace root, in this order:
 
 1. `pnpm-lock.yaml` → **pnpm**
 2. `yarn.lock` → **yarn**
-3. `bun.lockb` → **bun**
+3. `bun.lock` or `bun.lockb` → **bun**
 4. `package-lock.json` → **npm**
 5. No lock file found → Uses `quickScriptsRunner.defaultPackageManager`
 
@@ -314,8 +397,10 @@ pnpm test
 
 **Test Suite**:
 
-- `PackageJsonReader` tests: File existence and script parsing
-- `PackageManagerDetector` tests: Package manager detection logic
+- `PackageJsonReader` tests: File existence and script parsing with `packageDir` / `relativePath`
+- `PackageScanner` tests: Nested packages, `node_modules` exclusion, and `scanSubfolders: false`
+- `PackageManagerDetector` tests: Default detection, lock-file walk-up, and `bun.lock`
+- `PathUtils` tests: Exclude globs and relative path helpers
 - `ScriptExecutor` tests: Script execution interface validation
 
 ## 📝 License

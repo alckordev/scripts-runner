@@ -18,8 +18,13 @@ export class ScriptTreeItem extends vscode.TreeItem {
     const truncatedCommand =
       script.command.length > 30 ? `${script.command.substring(0, 27)}...` : script.command;
 
-    const workspaceInfo = workspaceFolder ? `\nWorkspace: ${workspaceFolder.name}` : '';
-    this.tooltip = `${info.icon} ${fullCommand}${workspaceInfo}\n\nCommand: ${script.command}`;
+    const packageLabel =
+      script.relativePath && script.relativePath !== '.'
+        ? script.relativePath
+        : workspaceFolder?.name;
+    const packageInfo = packageLabel ? `\nPackage: ${packageLabel}` : '';
+
+    this.tooltip = `${info.icon} ${fullCommand}${packageInfo}\n\nCommand: ${script.command}`;
     this.description = truncatedCommand;
     this.iconPath = new vscode.ThemeIcon('run');
     this.contextValue = 'script';

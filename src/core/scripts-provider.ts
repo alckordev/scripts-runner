@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { ScriptTreeItem } from './script-tree-item';
 import { WorkspaceTreeItem } from './workspace-tree-item';
-import { IPackageJsonReader } from '../services/package-json-reader';
+import { PackageTreeItem } from './package-tree-item';
+import { IPackageScanner } from '../services/package-scanner';
 import { IPackageManagerDetector } from './package-manager-detector';
+import { PackageInfo } from '../models/package-info';
 import { Logger } from '../utils/logger';
 
-type TreeItem = ScriptTreeItem | WorkspaceTreeItem;
+type TreeItem = ScriptTreeItem | WorkspaceTreeItem | PackageTreeItem;
 
 /**
  * TreeDataProvider to display scripts in the sidebar
@@ -16,15 +18,18 @@ export class ScriptsProvider implements vscode.TreeDataProvider<TreeItem> {
   readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> =
     this._onDidChangeTreeData.event;
 
+  private readonly packagesCache = new Map<string, PackageInfo[]>();
+
   constructor(
-    private readonly packageJsonReader: IPackageJsonReader,
+    private readonly packageScanner: IPackageScanner,
     private readonly packageManagerDetector: IPackageManagerDetector
   ) {}
 
   /**
-   * Refreshes the tree view
+   * Refreshes the tree view and clears the package scan cache
    */
   refresh(): void {
+    this.packagesCache.clear();
     this._onDidChangeTreeData.fire();
   }
 
@@ -39,12 +44,10 @@ export class ScriptsProvider implements vscode.TreeDataProvider<TreeItem> {
       return undefined;
     }
 
-    // If only one workspace, return it
     if (workspaceFolders.length === 1) {
       return workspaceFolders[0];
     }
 
-    // If there's an active editor, find its workspace
     if (activeEditor?.document.uri) {
       const activeUri = activeEditor.document.uri;
       const workspaceFolder = vscode.workspace.getWorkspaceFolder(activeUri);
@@ -53,33 +56,71 @@ export class ScriptsProvider implements vscode.TreeDataProvider<TreeItem> {
       }
     }
 
-    // Fallback to first workspace
     return workspaceFolders[0];
   }
 
   /**
-   * Gets scripts for a specific workspace folder
+   * Returns cached packages for a workspace, scanning when needed
    */
-  private async getScriptsForWorkspace(
-    workspaceFolder: vscode.WorkspaceFolder
-  ): Promise<ScriptTreeItem[]> {
-    const workspacePath = workspaceFolder.uri.fsPath;
+  private async getPackages(workspaceFolder: vscode.WorkspaceFolder): Promise<PackageInfo[]> {
+    const cacheKey = workspaceFolder.uri.fsPath;
+    const cached = this.packagesCache.get(cacheKey);
 
-    if (!this.packageJsonReader.exists(workspacePath)) {
-      Logger.debug(`package.json does not exist in ${workspaceFolder.name}`);
-      return [];
+    if (cached) {
+      return cached;
     }
 
-    const scripts = await this.packageJsonReader.readScripts(workspacePath);
+    const packages = await this.packageScanner.findPackages(workspaceFolder);
+    this.packagesCache.set(cacheKey, packages);
+    return packages;
+  }
 
-    if (scripts.length === 0) {
+  /**
+   * Packages that actually expose runnable scripts
+   */
+  private async getPackagesWithScripts(
+    workspaceFolder: vscode.WorkspaceFolder
+  ): Promise<PackageInfo[]> {
+    const packages = await this.getPackages(workspaceFolder);
+    return packages.filter((pkg) => pkg.scripts.length > 0);
+  }
+
+  /**
+   * Converts package scripts into tree items
+   */
+  private toScriptItems(
+    packageInfo: PackageInfo,
+    workspaceFolder: vscode.WorkspaceFolder
+  ): ScriptTreeItem[] {
+    const packageManager = this.packageManagerDetector.detect(
+      packageInfo.dir,
+      workspaceFolder.uri.fsPath
+    );
+
+    return packageInfo.scripts.map(
+      (script) => new ScriptTreeItem(script, packageManager, workspaceFolder)
+    );
+  }
+
+  /**
+   * Returns scripts directly when there is a single root package,
+   * otherwise a package node per discovered package.json
+   */
+  private async getPackageOrScriptItems(
+    workspaceFolder: vscode.WorkspaceFolder
+  ): Promise<TreeItem[]> {
+    const packages = await this.getPackagesWithScripts(workspaceFolder);
+
+    if (packages.length === 0) {
       Logger.debug(`No scripts available in ${workspaceFolder.name}`);
       return [];
     }
 
-    const packageManager = this.packageManagerDetector.detect(workspacePath);
+    if (packages.length === 1 && packages[0].relativePath === '.') {
+      return this.toScriptItems(packages[0], workspaceFolder);
+    }
 
-    return scripts.map((script) => new ScriptTreeItem(script, packageManager, workspaceFolder));
+    return packages.map((pkg) => new PackageTreeItem(pkg, workspaceFolder));
   }
 
   /**
@@ -93,29 +134,30 @@ export class ScriptsProvider implements vscode.TreeDataProvider<TreeItem> {
       return [];
     }
 
-    // If element is a workspace, return its scripts
-    if (element instanceof WorkspaceTreeItem) {
-      return await this.getScriptsForWorkspace(element.workspaceFolder);
+    if (element instanceof PackageTreeItem) {
+      return this.toScriptItems(element.packageInfo, element.workspaceFolder);
     }
 
-    // If multiple workspaces, show them as folders
+    if (element instanceof WorkspaceTreeItem) {
+      return this.getPackageOrScriptItems(element.workspaceFolder);
+    }
+
     if (workspaceFolders.length > 1) {
       const workspaceItems: WorkspaceTreeItem[] = [];
 
       for (const folder of workspaceFolders) {
-        const scripts = await this.getScriptsForWorkspace(folder);
-        if (scripts.length > 0) {
-          workspaceItems.push(new WorkspaceTreeItem(folder, scripts));
+        const packages = await this.getPackagesWithScripts(folder);
+        if (packages.length > 0) {
+          workspaceItems.push(new WorkspaceTreeItem(folder));
         }
       }
 
       return workspaceItems;
     }
 
-    // Single workspace: show scripts directly
     const activeWorkspace = this.getActiveWorkspaceFolder();
     if (activeWorkspace) {
-      return await this.getScriptsForWorkspace(activeWorkspace);
+      return this.getPackageOrScriptItems(activeWorkspace);
     }
 
     return [];
@@ -126,8 +168,32 @@ export class ScriptsProvider implements vscode.TreeDataProvider<TreeItem> {
    */
   getParent(element: TreeItem): vscode.ProviderResult<TreeItem> {
     if (element instanceof ScriptTreeItem && element.workspaceFolder) {
-      return new WorkspaceTreeItem(element.workspaceFolder, []);
+      const packages = this.packagesCache.get(element.workspaceFolder.uri.fsPath) ?? [];
+      const withScripts = packages.filter((pkg) => pkg.scripts.length > 0);
+      const showPackageNodes = !(withScripts.length === 1 && withScripts[0].relativePath === '.');
+
+      if (showPackageNodes) {
+        const packageInfo: PackageInfo = {
+          dir: element.script.packageDir,
+          relativePath: element.script.relativePath,
+          scripts: [],
+        };
+        return new PackageTreeItem(packageInfo, element.workspaceFolder);
+      }
+
+      const folders = vscode.workspace.workspaceFolders;
+      if (folders && folders.length > 1) {
+        return new WorkspaceTreeItem(element.workspaceFolder);
+      }
     }
+
+    if (element instanceof PackageTreeItem) {
+      const folders = vscode.workspace.workspaceFolders;
+      if (folders && folders.length > 1) {
+        return new WorkspaceTreeItem(element.workspaceFolder);
+      }
+    }
+
     return null;
   }
 

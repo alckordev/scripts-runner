@@ -2,6 +2,29 @@
 
 All notable changes to the "Quick Scripts Runner" extension will be documented in this file.
 
+## [1.1.0] - 2026-08-15
+
+### Added
+
+- Recursive scan of nested `package.json` files so scripts from subfolders (monorepos, microfrontends) appear in the sidebar
+- Settings to control nested discovery:
+  - `quickScriptsRunner.scanSubfolders`: enable or disable subfolder scanning (default: `true`)
+  - `quickScriptsRunner.exclude`: glob patterns skipped while scanning (default includes `node_modules`, `.git`, `dist`, `out`, `.next`, `coverage`)
+  - `quickScriptsRunner.maxResults`: maximum number of `package.json` files to include (default: `50`)
+- Per-package script execution: each script runs with `cwd` set to its own package directory
+- Package manager walk-up: if a nested package has no lock file, the detector searches parent folders up to the workspace root
+- Support for Bun's text lockfile (`bun.lock`) in addition to `bun.lockb`
+- Command Palette QuickPick for **Run Script**, listing `package › script` across discovered packages
+- Context menu to open the `package.json` of a specific package or script
+
+### Changed
+
+- Tree view keeps a flat script list when only the workspace root has scripts; nested packages are grouped as package nodes
+- Terminal names include the package relative path so `dev` in the root and `dev` in a subpackage do not share a terminal
+- Documentation updated for nested packages, new settings, and publishing to VS Marketplace and Cursor (Open VSX)
+
+---
+
 ## [1.0.1] - 2026-01-12
 
 ### Fixed
